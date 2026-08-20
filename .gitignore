@@ -2,3 +2,8 @@
 /logs/
 /venv/
 /src/.ipynb_checkpoints/
+/models/
+.env
+__pycache__/
+*.log
+src/pasted_thread.txt

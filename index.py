@@ -12,10 +12,28 @@ st.set_page_config(page_title="eMovie", page_icon="🎬", layout="wide")
 PAGE_SIZE = 20
 
 if "user_id" not in st.session_state:
-    st.session_state.user_id = None
-    st.session_state.username = None
+    # Restore login from the URL query param so a page reload doesn't log
+    # the user out (a fresh reload gets a brand new session_state).
+    uid = st.query_params.get("uid")
+    username = db.get_username(uid) if uid else None
+    st.session_state.user_id = uid if username else None
+    st.session_state.username = username
+    if not username:
+        st.query_params.pop("uid", None)
 if "offset" not in st.session_state:
     st.session_state.offset = 0
+
+
+def log_in(user_id, username):
+    st.session_state.user_id = user_id
+    st.session_state.username = username
+    st.query_params["uid"] = user_id
+
+
+def log_out():
+    st.session_state.user_id = None
+    st.session_state.username = None
+    st.query_params.pop("uid", None)
 
 
 def top_emotions(emotions, n=3):
@@ -70,8 +88,7 @@ with st.sidebar:
     if st.session_state.user_id:
         st.write(f"Signed in as **{st.session_state.username}**")
         if st.button("Log out"):
-            st.session_state.user_id = None
-            st.session_state.username = None
+            log_out()
             st.rerun()
     else:
         tab_login, tab_signup = st.tabs(["Log in", "Sign up"])
@@ -82,8 +99,7 @@ with st.sidebar:
                 if st.form_submit_button("Log in"):
                     user_id = db.authenticate(username, password)
                     if user_id:
-                        st.session_state.user_id = user_id
-                        st.session_state.username = username
+                        log_in(user_id, username)
                         st.rerun()
                     else:
                         st.error("Wrong username or password.")
@@ -97,29 +113,43 @@ with st.sidebar:
                     else:
                         user_id = db.create_user(new_username, new_password)
                         if user_id:
-                            st.session_state.user_id = user_id
-                            st.session_state.username = new_username
+                            log_in(user_id, new_username)
                             st.rerun()
                         else:
                             st.error("That username is already taken.")
 
 # --- Main ---
-tab_browse, tab_watchlist = st.tabs(["Browse movies", "My watchlist"])
+watchlist_count = len(db.watchlist_movie_ids(st.session_state.user_id)) if st.session_state.user_id else 0
+tab_browse, tab_watchlist = st.tabs(["Browse movies", f"⭐ My watchlist ({watchlist_count})"])
 
 with tab_browse:
     st.subheader("Search movies")
-    col_q, col_y, col_s = st.columns([3, 1, 2])
-    query = col_q.text_input("Title contains", "")
+    col_q, col_yc, col_y, col_s = st.columns([3, 1, 1, 2])
+    query = col_q.text_input("Title contains", key="search_query")
+    filter_by_year = col_yc.checkbox("Filter by year", key="search_filter_by_year")
     year = col_y.number_input(
-        "Year", min_value=0, max_value=2100, value=datetime.date.today().year, step=1
+        "Year",
+        min_value=0,
+        max_value=2100,
+        value=datetime.date.today().year,
+        step=1,
+        key="search_year",
+        disabled=not filter_by_year,
     )
-    sort_by = col_s.selectbox("Sort by", list(db.SORT_OPTIONS.keys()), index=1)
+    sort_by = col_s.selectbox(
+        "Sort by", list(db.SORT_OPTIONS.keys()), index=1, key="search_sort_by"
+    )
 
-    if col_q.button("Search") or query or year:
+    if st.session_state.get("_prev_search") != (query, filter_by_year, year, sort_by):
         st.session_state.offset = 0
+    st.session_state["_prev_search"] = (query, filter_by_year, year, sort_by)
 
     movies = db.search_movies(
-        query, year or None, limit=PAGE_SIZE, offset=st.session_state.offset, sort_by=sort_by
+        query,
+        year if filter_by_year else None,
+        limit=PAGE_SIZE,
+        offset=st.session_state.offset,
+        sort_by=sort_by,
     )
     in_watchlist_ids = db.watchlist_movie_ids(st.session_state.user_id) if st.session_state.user_id else set()
 

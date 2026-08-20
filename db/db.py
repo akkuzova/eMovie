@@ -51,6 +51,15 @@ def create_user(username, password):
         conn.close()
 
 
+def get_username(user_id):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT username FROM users WHERE id = %s;", (user_id,))
+    row = cur.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
 def authenticate(username, password):
     conn = get_conn()
     cur = conn.cursor()

@@ -20,8 +20,15 @@ if "user_id" not in st.session_state:
     st.session_state.username = username
     if not username:
         st.query_params.pop("uid", None)
-if "offset" not in st.session_state:
-    st.session_state.offset = 0
+def get_page():
+    try:
+        return max(1, int(st.query_params.get("page", "1")))
+    except (TypeError, ValueError):
+        return 1
+
+
+def set_page(page):
+    st.query_params["page"] = str(page)
 
 
 def log_in(user_id, username):
@@ -141,14 +148,15 @@ with tab_browse:
     )
 
     if st.session_state.get("_prev_search") != (query, filter_by_year, year, sort_by):
-        st.session_state.offset = 0
+        set_page(1)
     st.session_state["_prev_search"] = (query, filter_by_year, year, sort_by)
 
+    page = get_page()
     movies = db.search_movies(
         query,
         year if filter_by_year else None,
         limit=PAGE_SIZE,
-        offset=st.session_state.offset,
+        offset=(page - 1) * PAGE_SIZE,
         sort_by=sort_by,
     )
     in_watchlist_ids = db.watchlist_movie_ids(st.session_state.user_id) if st.session_state.user_id else set()
@@ -161,12 +169,13 @@ with tab_browse:
         render_movie_row(movie, in_watchlist_ids)
         st.divider()
 
+    st.caption(f"Page {page}")
     col_prev, col_next = st.columns(2)
-    if col_prev.button("← Previous", disabled=st.session_state.offset == 0):
-        st.session_state.offset = max(0, st.session_state.offset - PAGE_SIZE)
+    if col_prev.button("← Previous", disabled=page <= 1):
+        set_page(page - 1)
         st.rerun()
     if col_next.button("Next →", disabled=len(movies) < PAGE_SIZE):
-        st.session_state.offset += PAGE_SIZE
+        set_page(page + 1)
         st.rerun()
 
 with tab_watchlist:
